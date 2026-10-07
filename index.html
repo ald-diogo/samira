@@ -114,6 +114,12 @@
   dialog textarea{min-height:90px;resize:vertical}
   dialog select{width:100%;background:var(--noite);border:1px solid var(--linha);color:var(--nevoa);border-radius:12px;padding:11px 13px;font:inherit;font-size:.95rem}
   dialog .btn-sec{width:100%;padding:12px;border-radius:12px;border:1px solid var(--brasa);background:none;color:var(--brasa);font:inherit}
+  .acao div{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+  .acao span{flex:1}
+  .acao .outro{background:none;color:var(--brasa);border:1px solid var(--brasa);border-radius:10px;padding:10px 12px;font:inherit;font-size:.88rem}
+  .acao .outro[hidden]{display:none}
+  .acao.pulsa{animation:pulsa 1s ease-in-out 3}
+  @keyframes pulsa{50%{box-shadow:0 0 0 5px rgba(91,178,255,.35)}}
   .msg.fonte{align-self:center;color:var(--suave);font-size:.82rem;text-align:center;padding:2px 8px}
   .check{display:flex;align-items:center;gap:10px;color:var(--nevoa);font-size:.95rem}
   .check input{width:auto}
@@ -131,8 +137,8 @@
 </header>
 
 <section class="stage">
-  <button class="orb" id="orb" type="button" aria-label="Falar com a Samira"><span class="halo"></span><span class="raios"></span><span class="raios2"></span><span class="anel"></span><span class="orbita"></span><span class="arco"></span><span class="eco"></span><span class="eco2"></span><span class="disco"></span></button>
-  <p id="status" aria-live="polite">Toque no sol para falar</p>
+  <button class="orb" id="orb" type="button" aria-label="Ativar ou desligar a Samira"><span class="halo"></span><span class="raios"></span><span class="raios2"></span><span class="anel"></span><span class="orbita"></span><span class="arco"></span><span class="eco"></span><span class="eco2"></span><span class="disco"></span></button>
+  <p id="status" aria-live="polite">Toque no sol para ativar</p>
 </section>
 
 <main id="log" aria-live="polite"></main>
@@ -171,7 +177,9 @@
   <label for="cfgContatos">Contatos extras (opcional, um por linha: nome: número)</label>
   <textarea id="cfgContatos" placeholder="Mãe: 11 99999-0000"></textarea>
 
-  <label class="check"><input type="checkbox" id="cfgContinuo"> Conversa contínua (volta a ouvir depois de falar)</label>
+  <label class="check"><input type="checkbox" id="cfgAuto"> Abrir apps e ações sozinha, sem eu tocar em Executar</label>
+  <label class="check" style="margin-top:12px"><input type="checkbox" id="cfgInicio"> Ligar a escuta “Samira” assim que o app abrir</label>
+  <p class="nota">A escuta funciona com o app aberto e a tela ligada (a Samira mantém a tela acesa). Quando outro app está na frente, o Android pausa o microfone da Samira; ao voltar, ela retoma e pergunta o que vamos fazer.</p>
 
   <div class="linha-btns">
     <button type="button" id="fecharConfig">Cancelar</button>
@@ -187,9 +195,14 @@ const store = {
 };
 
 /* ---------- Estado ---------- */
-let state = 'idle', history = [], rec = null, ouviuAlgo = false;
+let state = 'idle', rec = null;
+let ativo = false;        // escuta ligada
+let fase = 'espera';      // 'espera' (aguarda "Samira") | 'comando' (conversa aberta)
+let recAtivo = false, pausa = false, ocupado = false, saiu = false, falhas = 0;
+let tCmd = null, wl = null, fimAtual = null;
+const pendentes = [];
 const STATUS = {
-  idle:'Toque no sol para falar',
+  idle:'Toque no sol para ativar',
   listening:'Ouvindo…',
   thinking:'Pensando…',
   speaking:'Falando… (toque para interromper)'
@@ -197,8 +210,13 @@ const STATUS = {
 function setState(s, msg){
   state = s;
   document.body.dataset.state = s;
+  if (!msg && s === 'idle' && ativo) msg = fase === 'espera' ? 'Diga “Samira”…' : 'Pode falar…';
   $('#status').textContent = msg || STATUS[s];
 }
+function setStateRepouso(){ setState('idle'); }
+function tratamento(){ const n = store.get('nome','').trim(); return (!n || n === 'chefe') ? 'senhor' : n; }
+const auto = () => store.get('auto','1') !== '0';
+
 
 /* ---------- Log ---------- */
 function addMsg(tipo, texto){
@@ -210,13 +228,63 @@ function addMsg(tipo, texto){
 }
 
 /* ---------- Ações no celular ---------- */
-const APPS = {
-  whatsapp:'com.whatsapp', youtube:'com.google.android.youtube', spotify:'com.spotify.music',
-  maps:'com.google.android.apps.maps', instagram:'com.instagram.android', gmail:'com.google.android.gm',
-  chrome:'com.android.chrome', telegram:'org.telegram.messenger', 'play store':'com.android.vending',
-  fotos:'com.google.android.apps.photos', netflix:'com.netflix.mediaclient', uber:'com.ubercab',
-  nubank:'com.nu.production', ifood:'br.com.brainweb.ifood', tiktok:'com.zhiliaoapp.musically'
-};
+/* n=nome, k=apelidos, p=pacote Android, s=esquema do app, w=site, c=categoria padrão do Android */
+const APPS = [
+  {n:'WhatsApp', k:['zap','zapzap','whats'], p:'com.whatsapp', s:'whatsapp', w:'https://wa.me/'},
+  {n:'WhatsApp Business', k:['whatsapp business','zap business'], p:'com.whatsapp.w4b'},
+  {n:'YouTube', k:['you tube','iutube'], p:'com.google.android.youtube', s:'vnd.youtube', w:'https://m.youtube.com'},
+  {n:'Spotify', k:[], p:'com.spotify.music', s:'spotify', w:'https://open.spotify.com'},
+  {n:'Maps', k:['google maps','mapas','mapa'], p:'com.google.android.apps.maps', w:'https://maps.google.com', c:'APP_MAPS'},
+  {n:'Waze', k:[], p:'com.waze', s:'waze', w:'https://waze.com/live-map'},
+  {n:'Instagram', k:['insta'], p:'com.instagram.android', s:'instagram', w:'https://instagram.com'},
+  {n:'Facebook', k:['face'], p:'com.facebook.katana', s:'fb', w:'https://m.facebook.com'},
+  {n:'Messenger', k:[], p:'com.facebook.orca', s:'fb-messenger'},
+  {n:'X', k:['twitter','tuiter'], p:'com.twitter.android', s:'twitter', w:'https://x.com'},
+  {n:'TikTok', k:['tik tok'], p:'com.zhiliaoapp.musically', w:'https://tiktok.com'},
+  {n:'Kwai', k:[], p:'com.kwai.video'},
+  {n:'Snapchat', k:['snap'], p:'com.snapchat.android', s:'snapchat'},
+  {n:'Pinterest', k:[], p:'com.pinterest', s:'pinterest'},
+  {n:'LinkedIn', k:[], p:'com.linkedin.android', s:'linkedin', w:'https://linkedin.com'},
+  {n:'Discord', k:[], p:'com.discord', s:'discord'},
+  {n:'Telegram', k:[], p:'org.telegram.messenger', s:'tg', w:'https://web.telegram.org'},
+  {n:'Gmail', k:['email','e-mail','correio'], p:'com.google.android.gm', w:'https://mail.google.com', c:'APP_EMAIL'},
+  {n:'Outlook', k:[], p:'com.microsoft.office.outlook'},
+  {n:'Chrome', k:['navegador','google chrome','internet'], p:'com.android.chrome', w:'https://www.google.com', c:'APP_BROWSER'},
+  {n:'Play Store', k:['playstore','loja de aplicativos','google play'], p:'com.android.vending', s:'market', w:'https://play.google.com/store'},
+  {n:'Fotos', k:['google fotos','galeria'], p:'com.google.android.apps.photos', w:'https://photos.google.com', c:'APP_GALLERY'},
+  {n:'Drive', k:['google drive'], p:'com.google.android.apps.docs', w:'https://drive.google.com'},
+  {n:'Agenda', k:['calendario','google agenda','calendar'], p:'com.google.android.calendar', w:'https://calendar.google.com', c:'APP_CALENDAR'},
+  {n:'Relógio', k:['relogio','despertador','alarmes'], p:'com.google.android.deskclock'},
+  {n:'Calculadora', k:[], p:'com.google.android.calculator', c:'APP_CALCULATOR'},
+  {n:'Contatos', k:['agenda de contatos'], p:'com.google.android.contacts', c:'APP_CONTACTS'},
+  {n:'Telefone', k:['discador','ligacoes'], p:'com.google.android.dialer'},
+  {n:'Mensagens', k:['sms','mensagem de texto'], p:'com.google.android.apps.messaging', c:'APP_MESSAGING'},
+  {n:'Meet', k:['google meet'], p:'com.google.android.apps.tachyon', w:'https://meet.google.com'},
+  {n:'Zoom', k:[], p:'us.zoom.videomeetings'},
+  {n:'Teams', k:['microsoft teams'], p:'com.microsoft.teams'},
+  {n:'Netflix', k:[], p:'com.netflix.mediaclient', s:'nflx', w:'https://netflix.com'},
+  {n:'Prime Video', k:['amazon prime','prime'], p:'com.amazon.avod.thirdpartyclient'},
+  {n:'Globoplay', k:['globo play'], p:'com.globo.globotv'},
+  {n:'Disney Plus', k:['disney','disney+'], p:'com.disney.disneyplus'},
+  {n:'Twitch', k:[], p:'tv.twitch.android.app', s:'twitch'},
+  {n:'Deezer', k:[], p:'deezer.android.app', s:'deezer'},
+  {n:'Uber', k:[], p:'com.ubercab', s:'uber', w:'https://m.uber.com'},
+  {n:'99', k:['noventa e nove','99 pop'], p:'com.taxis99'},
+  {n:'iFood', k:['i food'], p:'br.com.brainweb.ifood', w:'https://www.ifood.com.br'},
+  {n:'Mercado Livre', k:['mercadolivre'], p:'com.mercadolibre', w:'https://www.mercadolivre.com.br'},
+  {n:'Mercado Pago', k:[], p:'com.mercadopago.wallet'},
+  {n:'Shopee', k:[], p:'com.shopee.br'},
+  {n:'Amazon', k:['amazon compras'], p:'com.amazon.mShop.android.shopping'},
+  {n:'Nubank', k:['nu bank','roxinho'], p:'com.nu.production', w:'https://nubank.com.br'},
+  {n:'Inter', k:['banco inter'], p:'br.com.intermedium'},
+  {n:'Itaú', k:['itau'], p:'com.itau'},
+  {n:'Bradesco', k:[], p:'com.bradesco'},
+  {n:'Santander', k:[], p:'com.santander.app'},
+  {n:'Banco do Brasil', k:['bb'], p:'br.com.bb.android'},
+  {n:'Caixa Tem', k:['caixa'], p:'br.gov.caixa.tem'},
+  {n:'PicPay', k:['pic pay'], p:'com.picpay'}
+];
+
 const AJUSTES = {
   geral:'android.settings.SETTINGS', wifi:'android.settings.WIFI_SETTINGS',
   bluetooth:'android.settings.BLUETOOTH_SETTINGS', som:'android.settings.SOUND_SETTINGS',
@@ -273,14 +341,27 @@ function montarAcao(nome, a){
     case 'abrir_site':
       return {rotulo:`Abrir ${a.url}`, url:/^https?:\/\//.test(a.url)?a.url:'https://'+a.url};
     case 'abrir_app': {
-      const chave = String(a.app).toLowerCase();
-      if (chave === 'camera' || chave === 'câmera')
+      const q = String(a.app || '').trim();
+      if (!q) throw new Error('Qual app?');
+      if (/^c[aâ]mera$/i.test(q))
         return {rotulo:'Abrir câmera', url:intent('android.media.action.STILL_IMAGE_CAMERA')};
-      const pkg = APPS[chave];
-      if (!pkg) throw new Error('App desconhecido: '+a.app);
-      const fallback = enc('https://play.google.com/store/apps/details?id='+pkg);
-      return {rotulo:`Abrir ${a.app}`,
-        url:`intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${pkg};S.browser_fallback_url=${fallback};end`};
+      const app = achaApp(q);
+      const nome = app ? app.n : q;
+      const extra = /^[a-z][\w]*(\.[\w]+)+$/i.test(String(a.pacote||'').trim()) ? a.pacote.trim() : '';
+      const pkgs = [...new Set([app && app.p, extra].filter(Boolean))];
+      const play = pkgs[0]
+        ? 'https://play.google.com/store/apps/details?id=' + pkgs[0]
+        : 'https://play.google.com/store/search?q=' + enc(nome) + '&c=apps';
+      const fb = 'S.browser_fallback_url=' + enc(play) + ';';
+      const alts = [];
+      pkgs.forEach(p => alts.push({rot:'abrindo o app',
+        url:`intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${p};${fb}end`}));
+      if (app && app.c) alts.push({rot:'pelo app padrão da categoria',
+        url:`intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.${app.c};end`});
+      if (app && app.s) alts.push({rot:'pelo atalho do app', url:`intent://#Intent;scheme=${app.s};end`});
+      if (app && app.w) alts.push({rot:'versão no navegador', url:app.w});
+      alts.push({rot:pkgs[0] ? 'página na Play Store (tem botão Abrir)' : 'procurando na Play Store', url:play});
+      return {rotulo:`Abrir ${nome}`, alts};
     }
     case 'abrir_ajustes': {
       const act = AJUSTES[a.tela];
@@ -291,19 +372,51 @@ function montarAcao(nome, a){
   throw new Error('Ferramenta desconhecida: '+nome);
 }
 
-function mostrarAcao({rotulo, url}){
+function achaApp(q, exato){
+  const k = norm(q).replace(/^(o |a )/,'').trim();
+  const nomes = a => [a.n, ...a.k].map(norm);
+  const r = APPS.find(a => nomes(a).includes(k));
+  if (r || exato) return r || null;
+  return APPS.find(a => nomes(a).some(x => x.length >= 4 && (k.includes(x) || (k.length >= 4 && x.includes(k))))) || null;
+}
+
+function mostrarAcao(a){
+  const alts = a.alts || [{rot:'', url:a.url}];
+  let i = 0;
   const c = document.createElement('div');
   c.className = 'acao';
-  c.innerHTML = '<span></span><div><button type="button" class="go">Executar</button><button type="button" class="x" aria-label="Dispensar">✕</button></div>';
-  c.querySelector('span').textContent = rotulo;
-  c.querySelector('.go').onclick = () => { executar(url); c.remove(); };
+  c.innerHTML = '<span></span><div><button type="button" class="go">Executar</button><button type="button" class="outro" hidden>Outro jeito</button><button type="button" class="x" aria-label="Dispensar">✕</button></div>';
+  const rot = c.querySelector('span');
+  rot.textContent = a.rotulo;
+  const run = () => {
+    c.dataset.rodou = '1';
+    rot.textContent = a.rotulo + (alts[i].rot ? ' · ' + alts[i].rot : '');
+    c.querySelector('.outro').hidden = alts.length < 2;
+    c.classList.remove('pulsa');
+    saiu = true;
+    executar(alts[i].url);
+    setTimeout(() => {   // se a tela continua aqui, o Android não abriu
+      if (!document.hidden && c.isConnected){
+        saiu = false;
+        c.classList.add('pulsa');
+        if (alts.length > 1) setState(state, 'Não abriu? Toque em “Outro jeito”.');
+        else setState(state, 'Não abriu sozinho. Toque em Executar.');
+      }
+    }, 1800);
+  };
+  c.querySelector('.go').onclick = () => { i = 0; run(); };
+  c.querySelector('.outro').onclick = () => { i = (i + 1) % alts.length; run(); };
   c.querySelector('.x').onclick = () => c.remove();
   $('#acoes').appendChild(c);
+  if (auto()) pendentes.push(() => { if (c.isConnected && !c.dataset.rodou) run(); });
 }
 function executar(url){
-  if (/^https?:/.test(url)) window.open(url,'_blank');
-  else window.location.href = url;
+  if (/^https?:/.test(url)){
+    const w = window.open(url, '_blank');
+    if (!w) addMsg('err','O Android bloqueou a abertura automática. Toque em Executar.');
+  } else window.location.href = url;
 }
+
 
 /* ---------- Ferramentas (schema) ---------- */
 const str = d => ({type:'string', description:d});
@@ -328,8 +441,8 @@ const TOOLS = [
     input_schema:{type:'object',properties:{busca:str('Artista, música ou vídeo')},required:['busca']}},
   {name:'abrir_site', description:'Abre um endereço da web.',
     input_schema:{type:'object',properties:{url:str('URL')},required:['url']}},
-  {name:'abrir_app', description:'Abre um aplicativo instalado.',
-    input_schema:{type:'object',properties:{app:{type:'string',enum:['whatsapp','youtube','spotify','maps','instagram','gmail','chrome','telegram','play store','fotos','netflix','uber','nubank','ifood','tiktok','camera']}},required:['app']}},
+  {name:'abrir_app', description:'Abre qualquer aplicativo do celular pelo nome que a pessoa falou (ex.: WhatsApp, Nubank, Shopee, Banco Inter). Tenta vários caminhos sozinho, inclusive Play Store se não achar.',
+    input_schema:{type:'object',properties:{app:str('Nome do app como a pessoa falou'),pacote:str('Opcional: nome do pacote Android (ex.: com.exemplo.app), só se tiver certeza')},required:['app']}},
   {name:'abrir_ajustes', description:'Abre uma tela de ajustes do Android.',
     input_schema:{type:'object',properties:{tela:{type:'string',enum:Object.keys(AJUSTES)}},required:['tela']}}
 ];
@@ -389,11 +502,12 @@ const modelo = () => store.get('model.'+prov(), MODELOS[prov()]);
 const hist = {gemini:[], claude:[]};
 
 function systemPrompt(){
-  const nome = store.get('nome','chefe');
+  const nome = tratamento();
   const agora = new Date().toLocaleString('pt-BR',{dateStyle:'full',timeStyle:'short'});
-  return `Você é Samira, assistente de voz pessoal no celular Android de ${nome}. Chame a pessoa de "${nome}".
-Fale em português do Brasil, com tom caloroso, direto e levemente espirituoso. Suas respostas serão lidas em voz alta: no máximo três frases curtas, sem markdown, sem listas, sem emojis, sem links.
-Para agir no celular use as ferramentas. Você não executa sozinha: aparece um botão e a pessoa toca para confirmar, então avise algo como "Pronto, é só tocar em Executar."
+  return `Você é Samira, a assistente pessoal de voz de ${nome}: executiva, atenta, proativa e muito eficiente, com tom caloroso, elegante e levemente espirituoso. Chame a pessoa de "${nome}".
+Fale em português do Brasil. Suas respostas serão lidas em voz alta: no máximo três frases curtas, sem markdown, sem listas, sem emojis, sem links.
+Resolva o pedido inteiro. Não peça confirmações desnecessárias; faça no máximo uma pergunta curta quando faltar um dado essencial (por exemplo, o texto da mensagem). Ao terminar, pergunte brevemente se há mais alguma coisa.
+Para agir no celular use as ferramentas. Para abrir qualquer app use abrir_app com o nome falado (informe "pacote" só se tiver certeza). Os apps abrem sozinhos depois da sua fala; avise apenas "Abrindo…". Dentro de outros apps você só consegue deixar a mensagem, a rota, a busca ou o e-mail prontos; o último toque (enviar, confirmar ligação) é da pessoa, então avise isso em uma frase. Nunca diga que enviou algo que ainda depende desse toque.
 Para qualquer fato atual (notícias, clima, placares, preços, horários, resultados) ou que você não saiba com certeza, pesquise na web antes de responder e conte o resultado em linguagem falada.
 Para ligar ou mandar mensagem a alguém pelo nome, use antes a ferramenta buscar_contato. Se vierem vários contatos parecidos, pergunte qual. Se não achar, diga isso e peça o número.
 Para alarmes e timers, calcule o horário a partir da data e hora atuais.
@@ -535,85 +649,210 @@ async function perguntarGemini(texto){
 
 const perguntar = t => prov()==='claude' ? perguntarClaude(t) : perguntarGemini(t);
 
+function rotaLocal(t){
+  const n = norm(t).replace(/[.,!?;:]/g,'').trim();
+  const m = n.match(/^(?:por favor )?(?:abr(?:e|a|ir)|inici(?:a|ar)|execut(?:a|ar)|lanc(?:a|ar))\s+(?:o |a |os |as )?(?:aplicativo |app )?(?:do |da |de )?(.+?)(?: por favor)?$/);
+  if (!m) return null;
+  const app = achaApp(m[1], true);
+  return app ? {app:app.n} : null;
+}
+
 async function tratar(texto){
-  texto = texto.trim();
-  if (!texto) { setState('idle'); return; }
+  texto = (texto||'').trim();
+  if (!texto) return;
+  try{ rec && rec.abort(); }catch{}
+  if (ativo && fase === 'comando') armarTimeoutComando();
+  ocupado = true;
   addMsg('user', texto);
   setState('thinking');
+  let resp;
   try{
-    const resp = await perguntar(texto);
-    addMsg('samira', resp || '…');
-    falar(resp);
+    const l = rotaLocal(texto);
+    if (l){ mostrarAcao(montarAcao('abrir_app', l)); resp = 'Abrindo ' + l.app + '.'; }
+    else resp = await perguntar(texto);
   }catch(e){
     addMsg('err', e.message);
-    setState('idle');
+    ocupado = false;
+    setStateRepouso();
+    if (ativo) setTimeout(iniciarRec, 500);
+    return;
   }
+  ocupado = false;
+  responder(resp || '…');
+}
+
+function responder(texto){
+  addMsg('samira', texto);
+  falar(texto);
 }
 
 /* ---------- Voz ---------- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const WAKE = /s[aáâã]m[iíy]r[aáâ]|semira|samila|sa mira/i;
 
-function ouvir(){
-  if (!SR){ addMsg('err','Este navegador não tem reconhecimento de voz. Use o Chrome no Android, ou digite.'); return; }
+function ligar(){
+  if (!SR){ addMsg('err','Este navegador não tem reconhecimento de voz. Use o Chrome no Android, ou digite.'); return false; }
+  ativo = true;
+  pedirWakeLock();
+  return true;
+}
+function desligar(){
+  ativo = false; fase = 'espera';
+  clearTimeout(tCmd);
+  try{ rec && rec.abort(); }catch{}
+  recAtivo = false; pausa = false; saiu = false;
+  pendentes.length = 0;
   speechSynthesis.cancel();
-  rec = new SR();
-  rec.lang = 'pt-BR';
-  rec.interimResults = true;
-  rec.maxAlternatives = 1;
-  ouviuAlgo = false;
-  let final = '';
-  rec.onresult = e => {
-    let parcial = '';
-    for (const r of e.results){
-      if (r.isFinal) final += r[0].transcript; else parcial += r[0].transcript;
+  soltarWakeLock();
+}
+function entrarComando(){ fase = 'comando'; armarTimeoutComando(); }
+function armarTimeoutComando(){
+  clearTimeout(tCmd);
+  tCmd = setTimeout(() => {
+    if (!ativo) return;
+    if (ocupado || pausa){ armarTimeoutComando(); return; }
+    fase = 'espera';
+    try{ rec && rec.abort(); }catch{}
+    setStateRepouso();
+    setTimeout(iniciarRec, 300);
+  }, 30000);
+}
+
+async function pedirWakeLock(){
+  try{ if ('wakeLock' in navigator && !wl) { wl = await navigator.wakeLock.request('screen'); wl.addEventListener('release', () => { wl = null; }); } }catch{}
+}
+function soltarWakeLock(){ try{ wl && wl.release(); }catch{} wl = null; }
+
+function iniciarRec(){
+  if (!ativo || pausa || recAtivo || ocupado || document.hidden) return;
+  const r = new SR();
+  rec = r;
+  r.lang = 'pt-BR';
+  r.interimResults = true;
+  r.continuous = false;
+  r.maxAlternatives = 1;
+  let final = '', parcial = '';
+  r.onstart = () => {
+    recAtivo = true;
+    if (fase === 'comando') setState('listening'); else setState('idle');
+  };
+  r.onresult = e => {
+    final = ''; parcial = '';
+    for (const x of e.results){
+      if (x.isFinal) final += x[0].transcript; else parcial += x[0].transcript;
     }
-    ouviuAlgo = true;
-    $('#status').textContent = '“' + (final + parcial).trim() + '”';
+    falhas = 0;
+    if (fase === 'comando') $('#status').textContent = '“' + (final + parcial).trim() + '”';
   };
-  rec.onerror = e => {
-    if (e.error === 'not-allowed') addMsg('err','Permita o microfone nas configurações do site.');
-    else if (e.error !== 'no-speech' && e.error !== 'aborted') addMsg('err','Erro de voz: '+e.error);
+  r.onerror = e => {
+    if (rec !== r) return;
+    recAtivo = false;
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed'){
+      addMsg('err','Permita o microfone nas configurações do site.');
+      desligar(); setState('idle');
+    } else if (e.error !== 'no-speech' && e.error !== 'aborted'){
+      falhas++;
+      if (falhas === 3) addMsg('err','Problema no reconhecimento de voz ('+e.error+'). Vou continuar tentando.');
+    }
   };
-  rec.onend = () => {
-    if (state !== 'listening') return;
-    if (final.trim()) tratar(final); else setState('idle');
+  r.onend = () => {
+    if (rec !== r) return;
+    recAtivo = false;
+    if (!ativo || pausa || ocupado) return;
+    const t = (final || parcial).trim();
+    if (t) processar(t);
+    else setTimeout(iniciarRec, falhas > 3 ? 2500 : 250);
   };
-  setState('listening');
-  try{ rec.start(); }catch{ setState('idle'); }
+  try{ recAtivo = true; r.start(); }catch{ recAtivo = false; setTimeout(iniciarRec, 800); }
+}
+
+function processar(t){
+  if (fase === 'espera'){
+    const m = t.match(WAKE);
+    if (!m){ setTimeout(iniciarRec, 150); return; }
+    entrarComando();
+    const resto = t.slice(m.index + m[0].length).replace(/^[\s,.!?:;-]+/,'').trim();
+    if (resto.split(/\s+/).filter(Boolean).length >= 2) return tratar(resto);
+    return responder(saudacao());
+  }
+  armarTimeoutComando();
+  const m = t.match(WAKE);
+  if (m && m.index < 3) t = t.slice(m.index + m[0].length).replace(/^[\s,.!?:;-]+/,'').trim();
+  if (!t) return responder(saudacao());
+  if (/^(tchau|pode parar|so isso|era so isso|ate logo|e so isso|nada nao)/.test(norm(t))){
+    fase = 'espera';
+    return responder('Às ordens. É só me chamar.');
+  }
+  tratar(t);
+}
+function saudacao(){
+  const n = store.get('nome','').trim();
+  return (!n || n === 'chefe') ? 'Sim senhor, o que deseja?' : `Sim, ${n}. O que deseja?`;
 }
 
 function escolherVoz(){
-  const v = speechSynthesis.getVoices().filter(x=>x.lang && x.lang.toLowerCase().startsWith('pt-br'));
+  const v = speechSynthesis.getVoices().filter(x=>x.lang && x.lang.toLowerCase().replace('_','-').startsWith('pt-br'));
   return v.find(x=>/female|luciana|francisca|google/i.test(x.name)) || v[0];
 }
 function falar(texto){
-  if (!texto || !('speechSynthesis' in window)){ setState('idle'); return; }
+  texto = (texto||'').replace(/[*_#`]/g,'').trim();
+  if (!texto || !('speechSynthesis' in window)){ depoisDeFalar(); return; }
+  pausa = true;
+  try{ rec && rec.abort(); }catch{}
+  recAtivo = false;
   speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(texto.replace(/[*_#`]/g,''));
+  const u = new SpeechSynthesisUtterance(texto);
   u.lang = 'pt-BR';
   const voz = escolherVoz(); if (voz) u.voice = voz;
   u.rate = 1.03;
+  let feito = false;
+  const fim = () => { if (feito) return; feito = true; clearTimeout(seg); fimAtual = null; depoisDeFalar(); };
+  const seg = setTimeout(fim, 2500 + texto.length * 90);   // o Android às vezes não avisa o fim da fala
+  fimAtual = fim;
   u.onstart = () => setState('speaking');
-  const fim = () => {
-    if (store.get('continuo')==='1') ouvir(); else setState('idle');
-  };
   u.onend = fim;
-  u.onerror = () => setState('idle');
+  u.onerror = fim;
   setState('speaking');
   speechSynthesis.speak(u);
 }
+function depoisDeFalar(){
+  pausa = false;
+  if (ativo && fase === 'comando') armarTimeoutComando();
+  setStateRepouso();
+  const p = pendentes.shift();
+  pendentes.length = 0;
+  if (p){ setTimeout(p, 150); return; }       // abre o app depois que ela termina de falar
+  if (ativo) setTimeout(iniciarRec, 350);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  document.querySelectorAll('.acao[data-rodou]').forEach(c => c.remove());
+  if (!ativo) return;
+  pedirWakeLock();
+  if (saiu){                                  // voltou de outro app: continua a conversa
+    saiu = false;
+    entrarComando();
+    responder('Estou aqui. O que vamos fazer agora?');
+  } else iniciarRec();
+});
+speechSynthesis.onvoiceschanged = () => {};
 
 /* ---------- Eventos ---------- */
 $('#orb').addEventListener('click',()=>{
-  if (state === 'speaking'){ speechSynthesis.cancel(); setState('idle'); }
-  else if (state === 'listening'){ rec && rec.stop(); }
-  else if (state === 'idle') ouvir();
+  if (state === 'speaking'){ speechSynthesis.cancel(); fimAtual && fimAtual(); return; }
+  if (state === 'thinking') return;
+  if (ativo){ desligar(); setState('idle','Escuta desligada. Toque no sol para ativar.'); return; }
+  if (!ligar()) return;
+  entrarComando();
+  responder(saudacao());
 });
 $('#form').addEventListener('submit',e=>{
   e.preventDefault();
   const t = $('#texto').value; $('#texto').value='';
-  if (state==='idle') tratar(t);
+  if (!ocupado && state !== 'speaking') tratar(t);
 });
+
 
 /* ---------- Ajustes ---------- */
 const dlg = $('#config');
@@ -631,7 +870,8 @@ function abrirConfig(){
   $('#cfgNome').value = store.get('nome','');
   $('#cfgContatos').value = store.get('contatos');
   atualizarStatusContatos();
-  $('#cfgContinuo').checked = store.get('continuo')==='1';
+  $('#cfgAuto').checked = auto();
+  $('#cfgInicio').checked = store.get('inicio')==='1';
   if (!dlg.open) dlg.showModal();
 }
 $('#cfgProv').onchange = e => carregarProvedor(e.target.value);
@@ -643,9 +883,10 @@ $('#salvarConfig').onclick = () => {
   store.set('provider',p);
   store.set('key.'+p,$('#cfgKey').value.trim());
   store.set('model.'+p,$('#cfgModel').value.trim() || MODELOS[p]);
-  store.set('nome',$('#cfgNome').value.trim() || 'chefe');
+  store.set('nome',$('#cfgNome').value.trim() || 'senhor');
   store.set('contatos',$('#cfgContatos').value);
-  store.set('continuo',$('#cfgContinuo').checked?'1':'0');
+  store.set('auto',$('#cfgAuto').checked?'1':'0');
+  store.set('inicio',$('#cfgInicio').checked?'1':'0');
   dlg.close();
 };
 
@@ -659,6 +900,7 @@ if (!chave()) {
   addMsg('samira','Olá! Eu sou a Samira. Para começar, abra os Ajustes, escolha Gemini ou Claude e cole sua chave da API.');
   setTimeout(abrirConfig, 400);
 }
+if (store.get('inicio')==='1' && chave() && SR){ ligar(); setState('idle'); setTimeout(iniciarRec, 600); }
 if ('serviceWorker' in navigator && location.protocol === 'https:')
   navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
