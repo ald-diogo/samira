@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#050a18">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<title>Samira</title>
+<style>
+  :root{
+    --noite:#050a18; --painel:#0c1a3a; --linha:#1d3a78; --nevoa:#e6f1ff; --suave:#7f9cc9;
+    --brasa:#5bb2ff; --gelo:#9ff0ff;
+    --tech:"Rajdhani","Segoe UI",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    background:radial-gradient(ellipse at 50% 16%,#0b1f52 0,#050a18 52%,#02040c 100%) fixed;
+    color:var(--nevoa);
+    font-family:"Avenir Next","Segoe UI",system-ui,sans-serif;
+    display:flex;flex-direction:column;height:100dvh;overflow:hidden;
+    padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+    --sol-a:#ffffff; --sol-b:#6cc0ff; --sol-c:#1b4fe0; --glow:rgba(70,150,255,.5); --ring:#6cc0ff; --ray:rgba(140,205,255,.55);
+  }
+  body[data-state="listening"]{--sol-b:#9ff6ff; --sol-c:#1f8fe8; --glow:rgba(80,230,255,.55); --ring:#9ff0ff; --ray:rgba(170,245,255,.6)}
+  body[data-state="thinking"]{--sol-b:#a79bff; --sol-c:#3a2fd0; --glow:rgba(130,110,255,.5); --ring:#b9aeff; --ray:rgba(185,170,255,.55)}
+  body[data-state="speaking"]{--sol-b:#d6f1ff; --sol-c:#3a8dff; --glow:rgba(150,210,255,.8); --ring:#e6f6ff; --ray:rgba(220,240,255,.7)}
+  body::before{
+    content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+    background-image:
+      radial-gradient(1px 1px at 12% 22%,rgba(255,255,255,.7),transparent),
+      radial-gradient(1px 1px at 78% 12%,rgba(255,255,255,.5),transparent),
+      radial-gradient(1.5px 1.5px at 40% 6%,rgba(207,230,255,.8),transparent),
+      radial-gradient(1px 1px at 92% 38%,rgba(255,255,255,.45),transparent),
+      radial-gradient(1px 1px at 6% 52%,rgba(255,255,255,.45),transparent),
+      radial-gradient(1px 1px at 62% 34%,rgba(255,255,255,.35),transparent),
+      radial-gradient(1px 1px at 28% 70%,rgba(255,255,255,.3),transparent),
+      radial-gradient(1px 1px at 84% 78%,rgba(255,255,255,.3),transparent);
+  }
+  header,#log,#acoes,form{position:relative;z-index:1}
+
+  header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px 0}
+  h1{font-family:var(--tech);font-size:1.7rem;font-weight:500;letter-spacing:.34em;color:#d4e8ff;text-shadow:0 0 18px rgba(91,178,255,.65)}
+  .icon-btn{background:none;border:1px solid var(--linha);color:var(--suave);border-radius:12px;padding:8px 14px;font:inherit;font-size:.85rem}
+  .icon-btn:focus-visible,.orb:focus-visible,button:focus-visible{outline:2px solid var(--gelo);outline-offset:3px}
+
+  .stage{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:70px;padding:66px 0 26px}
+  .orb{--d:min(40vw,170px);width:var(--d);height:var(--d);border:0;padding:0;background:none;border-radius:50%;position:relative;cursor:pointer;isolation:isolate}
+  .orb span{position:absolute;border-radius:50%;pointer-events:none}
+  .orb .halo{inset:-75%;background:radial-gradient(circle,var(--glow) 0,transparent 60%);animation:respira 5s ease-in-out infinite}
+  .orb .raios{inset:-52%;background:repeating-conic-gradient(from 0deg,var(--ray) 0 .6deg,transparent .6deg 9deg);
+    -webkit-mask:radial-gradient(circle farthest-side,transparent 0 48%,#000 52%,transparent 100%);
+            mask:radial-gradient(circle farthest-side,transparent 0 48%,#000 52%,transparent 100%);animation:gira 100s linear infinite}
+  .orb .raios2{inset:-40%;background:repeating-conic-gradient(from 5deg,var(--ray) 0 1.3deg,transparent 1.3deg 24deg);
+    -webkit-mask:radial-gradient(circle farthest-side,transparent 0 54%,#000 58%,transparent 100%);
+            mask:radial-gradient(circle farthest-side,transparent 0 54%,#000 58%,transparent 100%);animation:gira 150s linear infinite reverse}
+  .orb .disco{inset:0;overflow:hidden;
+    background:radial-gradient(circle,var(--sol-a) 0,var(--sol-a) 10%,var(--sol-b) 44%,var(--sol-c) 82%,#061046 100%);
+    box-shadow:0 0 36px 4px var(--glow),0 0 110px 18px var(--glow);transition:box-shadow .5s}
+  .orb .disco::before{content:"";position:absolute;inset:-20%;
+    background:conic-gradient(from 0deg,transparent,rgba(255,255,255,.4),transparent 20%,rgba(255,255,255,.22) 45%,transparent 60%,rgba(255,255,255,.32) 80%,transparent);
+    filter:blur(12px);mix-blend-mode:screen;animation:gira 26s linear infinite}
+  .orb .disco::after{content:"";position:absolute;inset:0;border-radius:50%;box-shadow:inset 0 0 26px 8px rgba(2,10,64,.6)}
+  .orb .orbita{inset:-22%;background:repeating-conic-gradient(var(--ring) 0 .5deg,transparent .5deg 5deg);
+    -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 6px),#000 calc(100% - 6px));
+            mask:radial-gradient(farthest-side,transparent calc(100% - 6px),#000 calc(100% - 6px));opacity:.5;animation:gira 60s linear infinite reverse}
+  .orb .anel{inset:-36%;border:1px solid var(--ring);opacity:.22}
+  .orb .arco{inset:-29%;background:conic-gradient(from 0deg,var(--ring),transparent 30%);
+    -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 3px));
+            mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 3px));opacity:0}
+  .orb .eco,.orb .eco2{inset:0;border:1.5px solid var(--ring);opacity:0}
+
+  body[data-state="listening"] .halo{animation:none}
+  body[data-state="listening"] .eco{animation:eco 1.9s ease-out infinite}
+  body[data-state="listening"] .eco2{animation:eco 1.9s ease-out .95s infinite}
+  body[data-state="thinking"] .halo{animation:none}
+  body[data-state="thinking"] .arco{opacity:1;animation:gira 1.1s linear infinite}
+  body[data-state="thinking"] .disco::before{animation-duration:6s}
+  body[data-state="speaking"] .halo{animation:none;transform:scale(1.08)}
+  body[data-state="speaking"] .disco{animation:fala .85s ease-in-out infinite}
+  @keyframes respira{50%{transform:scale(1.06)}}
+  @keyframes eco{from{transform:scale(1);opacity:.75}to{transform:scale(2.3);opacity:0}}
+  @keyframes gira{to{transform:rotate(360deg)}}
+  @keyframes fala{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+  @media (prefers-reduced-motion:reduce){.orb span,.orb .disco,.orb .disco::before{animation:none!important}}
+
+  #status{font-family:var(--tech);font-size:1.05rem;letter-spacing:.08em;color:var(--suave);min-height:1.3em;text-align:center;padding:0 24px}
+
+  #log{flex:1;overflow-y:auto;padding:6px 20px 10px;display:flex;flex-direction:column;gap:10px;scroll-behavior:smooth}
+  .msg{max-width:88%;padding:10px 14px;border-radius:16px;line-height:1.4;font-size:.98rem}
+  .msg.user{align-self:flex-end;background:var(--painel);border:1px solid var(--linha);border-bottom-right-radius:4px}
+  .msg.samira{align-self:flex-start;background:rgba(12,26,58,.45);border:1px solid var(--linha);border-bottom-left-radius:4px}
+  .msg.err{align-self:center;color:#ffb4a8;font-size:.88rem;text-align:center}
+
+  #acoes{padding:0 20px;display:flex;flex-direction:column;gap:8px}
+  .acao{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--painel);border:1px solid var(--brasa);border-radius:14px;padding:10px 12px 10px 16px}
+  .acao span{font-size:.95rem}
+  .acao button{background:var(--brasa);color:#021022;border:0;border-radius:10px;padding:10px 18px;font:inherit;font-weight:600}
+  .acao .x{background:none;color:var(--suave);padding:10px 8px;font-weight:400}
+
+  form{display:flex;gap:8px;padding:10px 20px 14px}
+  input[type=text]{flex:1;min-width:0;background:var(--painel);border:1px solid var(--linha);color:var(--nevoa);border-radius:14px;padding:13px 16px;font:inherit;font-size:1rem}
+  form button{background:var(--painel);border:1px solid var(--linha);color:var(--nevoa);border-radius:14px;padding:0 18px;font:inherit}
+
+  dialog{background:var(--painel);color:var(--nevoa);border:1px solid var(--linha);border-radius:20px;padding:22px;width:min(92vw,440px);max-height:90dvh;overflow:auto;margin:auto}
+  dialog::backdrop{background:rgba(5,8,18,.7)}
+  dialog h2{font-weight:400;font-size:1.2rem;margin-bottom:14px}
+  label{display:block;font-size:.88rem;color:var(--suave);margin:14px 0 6px}
+  dialog input,dialog textarea{width:100%;background:var(--noite);border:1px solid var(--linha);color:var(--nevoa);border-radius:12px;padding:11px 13px;font:inherit;font-size:.95rem}
+  dialog textarea{min-height:90px;resize:vertical}
+  dialog select{width:100%;background:var(--noite);border:1px solid var(--linha);color:var(--nevoa);border-radius:12px;padding:11px 13px;font:inherit;font-size:.95rem}
+  .msg.fonte{align-self:center;color:var(--suave);font-size:.82rem;text-align:center;padding:2px 8px}
+  .check{display:flex;align-items:center;gap:10px;color:var(--nevoa);font-size:.95rem}
+  .check input{width:auto}
+  .nota{font-size:.8rem;color:var(--suave);margin-top:6px;line-height:1.4}
+  .linha-btns{display:flex;gap:10px;margin-top:20px}
+  .linha-btns button{flex:1;padding:12px;border-radius:12px;border:1px solid var(--linha);background:none;color:var(--nevoa);font:inherit}
+  .linha-btns .ok{background:var(--brasa);color:#021022;border-color:var(--brasa);font-weight:600}
+</style>
+</head>
+<body data-state="idle">
+
+<header>
+  <h1>Samira</h1>
+  <button class="icon-btn" id="abrirConfig" type="button">Ajustes</button>
+</header>
+
+<section class="stage">
+  <button class="orb" id="orb" type="button" aria-label="Falar com a Samira"><span class="halo"></span><span class="raios"></span><span class="raios2"></span><span class="anel"></span><span class="orbita"></span><span class="arco"></span><span class="eco"></span><span class="eco2"></span><span class="disco"></span></button>
+  <p id="status" aria-live="polite">Toque no sol para falar</p>
+</section>
+
+<main id="log" aria-live="polite"></main>
+<div id="acoes"></div>
+
+<form id="form" autocomplete="off">
+  <input type="text" id="texto" placeholder="Ou digite aqui" aria-label="Mensagem">
+  <button type="submit">Enviar</button>
+</form>
+
+<dialog id="config">
+  <h2>Ajustes</h2>
+
+  <label for="cfgProv">Cérebro da Samira</label>
+  <select id="cfgProv">
+    <option value="gemini">Gemini (Google)</option>
+    <option value="claude">Claude (Anthropic)</option>
+  </select>
+
+  <label for="cfgKey">Chave da API</label>
+  <input type="password" id="cfgKey" autocomplete="off">
+  <p class="nota" id="notaKey"></p>
+
+  <label for="cfgModel">Modelo</label>
+  <input type="text" id="cfgModel" autocomplete="off">
+  <p class="nota">Se der erro de modelo, troque por outro nome válido (ex.: gemini-2.5-flash).</p>
+
+  <label for="cfgNome">Como a Samira deve te chamar</label>
+  <input type="text" id="cfgNome" autocomplete="off">
+
+  <label for="cfgContatos">Contatos (um por linha, no formato nome: número)</label>
+  <textarea id="cfgContatos" placeholder="Mãe: 11 99999-0000&#10;João: 21 98888-1111"></textarea>
+  <p class="nota">O navegador não acessa a agenda do celular, então a Samira usa esta lista.</p>
+
+  <label class="check"><input type="checkbox" id="cfgContinuo"> Conversa contínua (volta a ouvir depois de falar)</label>
+
+  <div class="linha-btns">
+    <button type="button" id="fecharConfig">Cancelar</button>
+    <button type="button" class="ok" id="salvarConfig">Salvar</button>
+  </div>
+</dialog>
+
+<script>
+const $ = s => document.querySelector(s);
+const store = {
+  get:(k,d='')=>localStorage.getItem('samira.'+k) ?? d,
+  set:(k,v)=>localStorage.setItem('samira.'+k,v)
+};
+
+/* ---------- Estado ---------- */
+let state = 'idle', history = [], rec = null, ouviuAlgo = false;
+const STATUS = {
+  idle:'Toque no sol para falar',
+  listening:'Ouvindo…',
+  thinking:'Pensando…',
+  speaking:'Falando… (toque para interromper)'
+};
+function setState(s, msg){
+  state = s;
+  document.body.dataset.state = s;
+  $('#status').textContent = msg || STATUS[s];
+}
+
+/* ---------- Log ---------- */
+function addMsg(tipo, texto){
+  const d = document.createElement('div');
+  d.className = 'msg ' + tipo;
+  d.textContent = texto;
+  $('#log').appendChild(d);
+  $('#log').scrollTop = $('#log').scrollHeight;
+}
+
+/* ---------- Ações no celular ---------- */
+const APPS = {
+  whatsapp:'com.whatsapp', youtube:'com.google.android.youtube', spotify:'com.spotify.music',
+  maps:'com.google.android.apps.maps', instagram:'com.instagram.android', gmail:'com.google.android.gm',
+  chrome:'com.android.chrome', telegram:'org.telegram.messenger', 'play store':'com.android.vending',
+  fotos:'com.google.android.apps.photos', netflix:'com.netflix.mediaclient', uber:'com.ubercab',
+  nubank:'com.nu.production', ifood:'br.com.brainweb.ifood', tiktok:'com.zhiliaoapp.musically'
+};
+const AJUSTES = {
+  geral:'android.settings.SETTINGS', wifi:'android.settings.WIFI_SETTINGS',
+  bluetooth:'android.settings.BLUETOOTH_SETTINGS', som:'android.settings.SOUND_SETTINGS',
+  tela:'android.settings.DISPLAY_SETTINGS', bateria:'android.settings.BATTERY_SAVER_SETTINGS',
+  localizacao:'android.settings.LOCATION_SOURCE_SETTINGS'
+};
+const enc = encodeURIComponent;
+const intent = (action, extras='', pkg='') =>
+  `intent:#Intent;action=${action};${pkg?`package=${pkg};`:''}${extras}end`;
+
+function soDigitos(n){
+  let d = String(n).replace(/\D/g,'');
+  if (d.length <= 11) d = '55' + d;
+  return d;
+}
+function telefone(n){
+  const t = String(n).replace(/[^\d+]/g,'');
+  if (!t) throw new Error('Número inválido');
+  return t;
+}
+
+function montarAcao(nome, a){
+  switch(nome){
+    case 'criar_alarme': {
+      const h = +a.hora, m = +a.minuto;
+      if (!(h>=0&&h<24&&m>=0&&m<60)) throw new Error('Horário inválido');
+      const hh = String(h).padStart(2,'0'), mm = String(m).padStart(2,'0');
+      return {rotulo:`Alarme às ${hh}:${mm}${a.nome?` · ${a.nome}`:''}`,
+        url:intent('android.intent.action.SET_ALARM',
+          `i.android.intent.extra.alarm.HOUR=${h};i.android.intent.extra.alarm.MINUTES=${m};S.android.intent.extra.alarm.MESSAGE=${enc(a.nome||'Samira')};`)};
+    }
+    case 'criar_timer': {
+      const s = Math.round(+a.segundos);
+      if (!(s>0)) throw new Error('Duração inválida');
+      const min = Math.floor(s/60), seg = s%60;
+      return {rotulo:`Timer de ${min?min+' min ':''}${seg?seg+' s':''}`.trim(),
+        url:intent('android.intent.action.SET_TIMER',
+          `i.android.intent.extra.alarm.LENGTH=${s};S.android.intent.extra.alarm.MESSAGE=${enc(a.nome||'Timer')};`)};
+    }
+    case 'enviar_sms':
+      return {rotulo:`SMS para ${a.destinatario||a.numero}`, url:`sms:${telefone(a.numero)}?body=${enc(a.texto||'')}`};
+    case 'enviar_whatsapp':
+      return {rotulo:`WhatsApp para ${a.destinatario||a.numero}`, url:`https://wa.me/${soDigitos(a.numero)}?text=${enc(a.texto||'')}`};
+    case 'ligar':
+      return {rotulo:`Ligar para ${a.destinatario||a.numero}`, url:`tel:${telefone(a.numero)}`};
+    case 'enviar_email':
+      return {rotulo:`E-mail para ${a.para}`, url:`mailto:${a.para}?subject=${enc(a.assunto||'')}&body=${enc(a.corpo||'')}`};
+    case 'navegar':
+      return {rotulo:`Rota até ${a.destino}`, url:`https://www.google.com/maps/dir/?api=1&destination=${enc(a.destino)}&travelmode=driving`};
+    case 'abrir_busca_google':
+      return {rotulo:`Pesquisar: ${a.consulta}`, url:`https://www.google.com/search?q=${enc(a.consulta)}`};
+    case 'tocar_musica':
+      return {rotulo:`Buscar música: ${a.busca}`, url:`https://www.youtube.com/results?search_query=${enc(a.busca)}`};
+    case 'abrir_site':
+      return {rotulo:`Abrir ${a.url}`, url:/^https?:\/\//.test(a.url)?a.url:'https://'+a.url};
+    case 'abrir_app': {
+      const chave = String(a.app).toLowerCase();
+      if (chave === 'camera' || chave === 'câmera')
+        return {rotulo:'Abrir câmera', url:intent('android.media.action.STILL_IMAGE_CAMERA')};
+      const pkg = APPS[chave];
+      if (!pkg) throw new Error('App desconhecido: '+a.app);
+      const fallback = enc('https://play.google.com/store/apps/details?id='+pkg);
+      return {rotulo:`Abrir ${a.app}`,
+        url:`intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${pkg};S.browser_fallback_url=${fallback};end`};
+    }
+    case 'abrir_ajustes': {
+      const act = AJUSTES[a.tela];
+      if (!act) throw new Error('Tela de ajustes desconhecida');
+      return {rotulo:`Ajustes: ${a.tela}`, url:intent(act)};
+    }
+  }
+  throw new Error('Ferramenta desconhecida: '+nome);
+}
+
+function mostrarAcao({rotulo, url}){
+  const c = document.createElement('div');
+  c.className = 'acao';
+  c.innerHTML = '<span></span><div><button type="button" class="go">Executar</button><button type="button" class="x" aria-label="Dispensar">✕</button></div>';
+  c.querySelector('span').textContent = rotulo;
+  c.querySelector('.go').onclick = () => { executar(url); c.remove(); };
+  c.querySelector('.x').onclick = () => c.remove();
+  $('#acoes').appendChild(c);
+}
+function executar(url){
+  if (/^https?:/.test(url)) window.open(url,'_blank');
+  else window.location.href = url;
+}
+
+/* ---------- Ferramentas (schema) ---------- */
+const str = d => ({type:'string', description:d});
+const TOOLS = [
+  {name:'criar_alarme', description:'Cria um alarme no relógio do celular.',
+    input_schema:{type:'object',properties:{hora:{type:'integer',description:'0-23'},minuto:{type:'integer',description:'0-59'},nome:str('Rótulo do alarme')},required:['hora','minuto']}},
+  {name:'criar_timer', description:'Inicia um timer de contagem regressiva.',
+    input_schema:{type:'object',properties:{segundos:{type:'integer'},nome:str('Rótulo')},required:['segundos']}},
+  {name:'enviar_sms', description:'Prepara um SMS.',
+    input_schema:{type:'object',properties:{numero:str('Telefone com DDD'),destinatario:str('Nome da pessoa'),texto:str('Mensagem')},required:['numero','texto']}},
+  {name:'enviar_whatsapp', description:'Prepara uma mensagem no WhatsApp.',
+    input_schema:{type:'object',properties:{numero:str('Telefone com DDD'),destinatario:str('Nome da pessoa'),texto:str('Mensagem')},required:['numero','texto']}},
+  {name:'ligar', description:'Prepara uma ligação.',
+    input_schema:{type:'object',properties:{numero:str('Telefone com DDD'),destinatario:str('Nome da pessoa')},required:['numero']}},
+  {name:'enviar_email', description:'Prepara um e-mail.',
+    input_schema:{type:'object',properties:{para:str('Endereço de e-mail'),assunto:str('Assunto'),corpo:str('Texto')},required:['para']}},
+  {name:'navegar', description:'Abre a rota no Google Maps.',
+    input_schema:{type:'object',properties:{destino:str('Endereço ou lugar')},required:['destino']}},
+  {name:'abrir_busca_google', description:'Abre a página de resultados do Google no navegador. Use SÓ quando a pessoa pedir para abrir a pesquisa; para responder perguntas, use a pesquisa na web.',
+    input_schema:{type:'object',properties:{consulta:str('Termos')},required:['consulta']}},
+  {name:'tocar_musica', description:'Busca uma música ou vídeo no YouTube.',
+    input_schema:{type:'object',properties:{busca:str('Artista, música ou vídeo')},required:['busca']}},
+  {name:'abrir_site', description:'Abre um endereço da web.',
+    input_schema:{type:'object',properties:{url:str('URL')},required:['url']}},
+  {name:'abrir_app', description:'Abre um aplicativo instalado.',
+    input_schema:{type:'object',properties:{app:{type:'string',enum:['whatsapp','youtube','spotify','maps','instagram','gmail','chrome','telegram','play store','fotos','netflix','uber','nubank','ifood','tiktok','camera']}},required:['app']}},
+  {name:'abrir_ajustes', description:'Abre uma tela de ajustes do Android.',
+    input_schema:{type:'object',properties:{tela:{type:'string',enum:Object.keys(AJUSTES)}},required:['tela']}}
+];
+const BUSCA_GEMINI = {name:'pesquisar_na_web',
+  description:'Pesquisa na internet informações atuais (notícias, clima, placares, preços, horários, fatos recentes) e devolve um resumo.',
+  input_schema:{type:'object',properties:{consulta:str('O que pesquisar, com detalhes')},required:['consulta']}};
+const TOOLS_GEMINI = [...TOOLS, BUSCA_GEMINI].map(t=>({name:t.name,description:t.description,parameters:t.input_schema}));
+
+/* ---------- IA (Gemini ou Claude) ---------- */
+const MODELOS = {gemini:'gemini-3.8-flash', claude:'claude-sonnet-5-5'};
+const prov = () => store.get('provider','gemini');
+const chave = () => store.get('key.'+prov());
+const modelo = () => store.get('model.'+prov(), MODELOS[prov()]);
+const hist = {gemini:[], claude:[]};
+
+function systemPrompt(){
+  const nome = store.get('nome','chefe');
+  const contatos = store.get('contatos','').trim() || '(nenhum cadastrado)';
+  const agora = new Date().toLocaleString('pt-BR',{dateStyle:'full',timeStyle:'short'});
+  return `Você é Samira, assistente de voz pessoal no celular Android de ${nome}. Chame a pessoa de "${nome}".
+Fale em português do Brasil, com tom caloroso, direto e levemente espirituoso. Suas respostas serão lidas em voz alta: no máximo três frases curtas, sem markdown, sem listas, sem emojis, sem links.
+Para agir no celular use as ferramentas. Você não executa sozinha: aparece um botão e a pessoa toca para confirmar, então avise algo como "Pronto, é só tocar em Executar."
+Para qualquer fato atual (notícias, clima, placares, preços, horários, resultados) ou que você não saiba com certeza, pesquise na web antes de responder e conte o resultado em linguagem falada.
+Você não acessa a agenda do celular, só a lista de contatos abaixo. Se faltar o número de alguém, peça.
+Para alarmes e timers, calcule o horário a partir da data e hora atuais.
+Data e hora agora: ${agora}.
+Contatos:
+${contatos}`;
+}
+
+function aparar(h, ehTexto){
+  while (h.length > 24) h.shift();
+  while (h.length && !ehTexto(h[0])) h.shift();
+}
+function semChave(){
+  abrirConfig();
+  return new Error('Cole sua chave da API nos Ajustes.');
+}
+
+/* ----- Claude ----- */
+async function chamarClaude(){
+  if (!chave()) throw semChave();
+  const r = await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{
+      'content-type':'application/json',
+      'x-api-key':chave(),
+      'anthropic-version':'2023-06-01',
+      'anthropic-dangerous-direct-browser-access':'true'
+    },
+    body:JSON.stringify({
+      model:modelo(),
+      max_tokens:700,
+      system:systemPrompt(),
+      tools:[...TOOLS,{type:'web_search_20250305',name:'web_search',max_uses:3}],
+      messages:hist.claude
+    })
+  });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error?.message || 'Erro '+r.status);
+  return j;
+}
+
+async function perguntarClaude(texto){
+  const h = hist.claude;
+  h.push({role:'user',content:texto});
+  aparar(h, m => m.role==='user' && typeof m.content==='string');
+  for (let i=0;i<6;i++){
+    const res = await chamarClaude();
+    h.push({role:'assistant',content:res.content});
+    res.content.filter(b=>b.type==='server_tool_use' && b.name==='web_search')
+      .forEach(b=>addMsg('fonte','Pesquisou na web: '+(b.input?.query||'')));
+    if (res.stop_reason === 'pause_turn') { setState('thinking','Pesquisando na web…'); continue; }
+    if (res.stop_reason === 'tool_use'){
+      const resultados = res.content.filter(b=>b.type==='tool_use').map(b=>{
+        try{
+          mostrarAcao(montarAcao(b.name,b.input));
+          return {type:'tool_result',tool_use_id:b.id,content:'Botão de confirmação mostrado ao usuário.'};
+        }catch(e){
+          return {type:'tool_result',tool_use_id:b.id,content:'Erro: '+e.message,is_error:true};
+        }
+      });
+      h.push({role:'user',content:resultados});
+      continue;
+    }
+    return res.content.filter(b=>b.type==='text').map(b=>b.text).join(' ').trim();
+  }
+  return 'Não consegui concluir isso.';
+}
+
+/* ----- Gemini ----- */
+async function gemini(corpo, modeloUsado){
+  if (!chave()) throw semChave();
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modeloUsado}:generateContent?key=${encodeURIComponent(chave())}`;
+  const r = await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(corpo)});
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error?.message || 'Erro '+r.status);
+  return j;
+}
+const textoGemini = parts => (parts||[]).filter(p=>typeof p.text==='string' && !p.thought).map(p=>p.text).join(' ').trim();
+
+async function buscarNaWeb(consulta){
+  const res = await gemini({
+    contents:[{role:'user',parts:[{text:consulta+'\n\nResponda em português do Brasil, em até 5 frases curtas, com os fatos principais e a data quando fizer diferença.'}]}],
+    tools:[{google_search:{}}],
+    generationConfig:{maxOutputTokens:2000}
+  }, modelo());
+  const cand = res.candidates?.[0];
+  const texto = textoGemini(cand?.content?.parts) || 'Não encontrei nada confiável.';
+  const fontes = (cand?.groundingMetadata?.groundingChunks||[]).map(c=>c.web?.title).filter(Boolean);
+  const unicas = [...new Set(fontes)].slice(0,3);
+  if (unicas.length) addMsg('fonte','Fontes: '+unicas.join(', '));
+  return texto;
+}
+
+async function perguntarGemini(texto){
+  const h = hist.gemini;
+  h.push({role:'user',parts:[{text:texto}]});
+  aparar(h, m => m.role==='user' && m.parts.every(p=>typeof p.text==='string'));
+  for (let i=0;i<6;i++){
+    const res = await gemini({
+      systemInstruction:{parts:[{text:systemPrompt()}]},
+      contents:h,
+      tools:[{functionDeclarations:TOOLS_GEMINI}],
+      generationConfig:{maxOutputTokens:2000}
+    }, modelo());
+    const cand = res.candidates?.[0];
+    if (!cand?.content?.parts?.length){
+      if (res.promptFeedback?.blockReason) throw new Error('Pedido bloqueado pelo Gemini: '+res.promptFeedback.blockReason);
+      return 'Não consegui responder agora.';
+    }
+    h.push(cand.content);
+    const chamadas = cand.content.parts.filter(p=>p.functionCall).map(p=>p.functionCall);
+    if (!chamadas.length) return textoGemini(cand.content.parts) || 'Não consegui responder agora.';
+    const respostas = [];
+    for (const c of chamadas){
+      let resposta;
+      try{
+        if (c.name === 'pesquisar_na_web'){
+          setState('thinking','Pesquisando na web…');
+          addMsg('fonte','Pesquisou na web: '+c.args.consulta);
+          resposta = {resultado: await buscarNaWeb(c.args.consulta)};
+        } else {
+          mostrarAcao(montarAcao(c.name,c.args||{}));
+          resposta = {resultado:'Botão de confirmação mostrado ao usuário.'};
+        }
+      }catch(e){
+        resposta = {erro:e.message};
+      }
+      const fr = {name:c.name,response:resposta};
+      if (c.id) fr.id = c.id;
+      respostas.push({functionResponse:fr});
+    }
+    h.push({role:'user',parts:respostas});
+    setState('thinking');
+  }
+  return 'Não consegui concluir isso.';
+}
+
+const perguntar = t => prov()==='claude' ? perguntarClaude(t) : perguntarGemini(t);
+
+async function tratar(texto){
+  texto = texto.trim();
+  if (!texto) { setState('idle'); return; }
+  addMsg('user', texto);
+  setState('thinking');
+  try{
+    const resp = await perguntar(texto);
+    addMsg('samira', resp || '…');
+    falar(resp);
+  }catch(e){
+    addMsg('err', e.message);
+    setState('idle');
+  }
+}
+
+/* ---------- Voz ---------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+function ouvir(){
+  if (!SR){ addMsg('err','Este navegador não tem reconhecimento de voz. Use o Chrome no Android, ou digite.'); return; }
+  speechSynthesis.cancel();
+  rec = new SR();
+  rec.lang = 'pt-BR';
+  rec.interimResults = true;
+  rec.maxAlternatives = 1;
+  ouviuAlgo = false;
+  let final = '';
+  rec.onresult = e => {
+    let parcial = '';
+    for (const r of e.results){
+      if (r.isFinal) final += r[0].transcript; else parcial += r[0].transcript;
+    }
+    ouviuAlgo = true;
+    $('#status').textContent = '“' + (final + parcial).trim() + '”';
+  };
+  rec.onerror = e => {
+    if (e.error === 'not-allowed') addMsg('err','Permita o microfone nas configurações do site.');
+    else if (e.error !== 'no-speech' && e.error !== 'aborted') addMsg('err','Erro de voz: '+e.error);
+  };
+  rec.onend = () => {
+    if (state !== 'listening') return;
+    if (final.trim()) tratar(final); else setState('idle');
+  };
+  setState('listening');
+  try{ rec.start(); }catch{ setState('idle'); }
+}
+
+function escolherVoz(){
+  const v = speechSynthesis.getVoices().filter(x=>x.lang && x.lang.toLowerCase().startsWith('pt-br'));
+  return v.find(x=>/female|luciana|francisca|google/i.test(x.name)) || v[0];
+}
+function falar(texto){
+  if (!texto || !('speechSynthesis' in window)){ setState('idle'); return; }
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(texto.replace(/[*_#`]/g,''));
+  u.lang = 'pt-BR';
+  const voz = escolherVoz(); if (voz) u.voice = voz;
+  u.rate = 1.03;
+  u.onstart = () => setState('speaking');
+  const fim = () => {
+    if (store.get('continuo')==='1') ouvir(); else setState('idle');
+  };
+  u.onend = fim;
+  u.onerror = () => setState('idle');
+  setState('speaking');
+  speechSynthesis.speak(u);
+}
+
+/* ---------- Eventos ---------- */
+$('#orb').addEventListener('click',()=>{
+  if (state === 'speaking'){ speechSynthesis.cancel(); setState('idle'); }
+  else if (state === 'listening'){ rec && rec.stop(); }
+  else if (state === 'idle') ouvir();
+});
+$('#form').addEventListener('submit',e=>{
+  e.preventDefault();
+  const t = $('#texto').value; $('#texto').value='';
+  if (state==='idle') tratar(t);
+});
+
+/* ---------- Ajustes ---------- */
+const dlg = $('#config');
+function carregarProvedor(p){
+  $('#cfgKey').value = store.get('key.'+p);
+  $('#cfgModel').value = store.get('model.'+p, MODELOS[p]);
+  $('#cfgKey').placeholder = p==='gemini' ? 'AIza...' : 'sk-ant-...';
+  $('#notaKey').textContent = p==='gemini'
+    ? 'Crie a chave em aistudio.google.com/apikey. Ela fica salva só neste aparelho.'
+    : 'Crie a chave em console.anthropic.com e defina um limite de gasto. Ela fica salva só neste aparelho.';
+}
+function abrirConfig(){
+  $('#cfgProv').value = prov();
+  carregarProvedor(prov());
+  $('#cfgNome').value = store.get('nome','');
+  $('#cfgContatos').value = store.get('contatos');
+  $('#cfgContinuo').checked = store.get('continuo')==='1';
+  if (!dlg.open) dlg.showModal();
+}
+$('#cfgProv').onchange = e => carregarProvedor(e.target.value);
+$('#abrirConfig').onclick = abrirConfig;
+$('#fecharConfig').onclick = () => dlg.close();
+$('#salvarConfig').onclick = () => {
+  const p = $('#cfgProv').value;
+  store.set('provider',p);
+  store.set('key.'+p,$('#cfgKey').value.trim());
+  store.set('model.'+p,$('#cfgModel').value.trim() || MODELOS[p]);
+  store.set('nome',$('#cfgNome').value.trim() || 'chefe');
+  store.set('contatos',$('#cfgContatos').value);
+  store.set('continuo',$('#cfgContinuo').checked?'1':'0');
+  dlg.close();
+};
+
+/* ---------- Início ---------- */
+speechSynthesis.getVoices();
+if (store.get('key') && !store.get('key.claude')){   // migra a chave da versão anterior
+  store.set('key.claude', store.get('key'));
+  if (!store.get('provider')) store.set('provider','claude');
+}
+if (!chave()) {
+  addMsg('samira','Olá! Eu sou a Samira. Para começar, abra os Ajustes, escolha Gemini ou Claude e cole sua chave da API.');
+  setTimeout(abrirConfig, 400);
+}
+if ('serviceWorker' in navigator && location.protocol === 'https:')
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>
